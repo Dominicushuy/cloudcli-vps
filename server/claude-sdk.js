@@ -181,6 +181,19 @@ function mapCliOptionsToSDK(options = {}) {
     sdkOptions.permissionMode = 'bypassPermissions';
   }
 
+  // VPS patch (cloudcli-vps fork): env-based bypass override for headless deployments.
+  // When CLOUDCLI_BYPASS_PERMISSIONS=1, treat every session as if user toggled
+  // skipPermissions in UI. Avoids 3-permission_request/turn freeze on Bash-heavy tasks
+  // (git log, file ops). Memo evidence (Mac local trial 2026-05-08): turn 4
+  // ("summarize 3 most recent commits") triggered 3 permission_request frames each
+  // with TOOL_APPROVAL_TIMEOUT_MS=55000 — UI blocks 165s worst case if anh away.
+  // Plan mode preserved (planning UX intentionally requires explicit approval).
+  // Opt-in via env (NOT default-on) — preserves upstream behavior for users cloning
+  // this fork without setting the flag.
+  if (process.env.CLOUDCLI_BYPASS_PERMISSIONS === '1' && permissionMode !== 'plan') {
+    sdkOptions.permissionMode = 'bypassPermissions';
+  }
+
   let allowedTools = [...(settings.allowedTools || [])];
 
   // Add plan mode default tools
