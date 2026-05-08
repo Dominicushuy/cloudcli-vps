@@ -25,6 +25,12 @@ export function createWebSocketServer(
 ): WebSocketServer {
   const wss = new WebSocketServer({
     server,
+    // VPS patch (cloudcli-vps fork): enable per-message deflate. Saves ~60-70%
+    // bandwidth on large stream frames (code blocks, file contents) at minor CPU cost.
+    // Threshold 1024 skips compressing tiny status frames where deflate overhead exceeds
+    // savings. Memo evidence (Mac trial 2026-05-08): upstream default disabled; probe
+    // observed no Sec-WebSocket-Extensions header in 101 response.
+    perMessageDeflate: { threshold: 1024 },
     verifyClient: ((
       info: Parameters<VerifyClientCallbackSync<AuthenticatedWebSocketRequest>>[0]
     ) => verifyWebSocketClient(info, dependencies.verifyClient)),
