@@ -14,12 +14,38 @@ const getPermissionModesForProvider = (provider: LLMProvider): PermissionMode[] 
   return ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
 };
 
+// VPS patch (cloudcli-vps fork D11): env-driven default permission mode.
+// VITE_CLOUDCLI_DEFAULT_PERMISSION_MODE — set to a valid PermissionMode at build
+// time → new sessions (and sessions without saved localStorage preference) start
+// in that mode instead of 'default'. Companion to D10 (server-side bypass): D10
+// makes the SDK behave correctly; D11 makes the UI badge match. Without the env
+// var, behavior matches upstream. Validated against provider's allowed modes —
+// invalid combo (e.g. 'plan' + codex) silently falls back to 'default'.
+const ALL_PERMISSION_MODES: readonly PermissionMode[] = [
+  'default',
+  'acceptEdits',
+  'auto',
+  'bypassPermissions',
+  'plan',
+];
+const resolveDefaultPermissionMode = (provider: LLMProvider): PermissionMode => {
+  const raw = (import.meta.env.VITE_CLOUDCLI_DEFAULT_PERMISSION_MODE ?? '') as PermissionMode;
+  if (!raw || !ALL_PERMISSION_MODES.includes(raw)) {
+    return 'default';
+  }
+  const validModes = getPermissionModesForProvider(provider);
+  return validModes.includes(raw) ? raw : 'default';
+};
+
 interface UseChatProviderStateArgs {
   selectedSession: ProjectSession | null;
 }
 
 export function useChatProviderState({ selectedSession }: UseChatProviderStateArgs) {
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+    const initialProvider = (localStorage.getItem('selected-provider') as LLMProvider) || 'claude';
+    return resolveDefaultPermissionMode(initialProvider);
+  });
   const [pendingPermissionRequests, setPendingPermissionRequests] = useState<PendingPermissionRequest[]>([]);
   const [provider, setProvider] = useState<LLMProvider>(() => {
     return (localStorage.getItem('selected-provider') as LLMProvider) || 'claude';
@@ -46,7 +72,7 @@ export function useChatProviderState({ selectedSession }: UseChatProviderStateAr
 
     const savedMode = localStorage.getItem(`permissionMode-${selectedSession.id}`) as PermissionMode | null;
     const validModes = getPermissionModesForProvider(provider);
-    setPermissionMode(savedMode && validModes.includes(savedMode) ? savedMode : 'default');
+    setPermissionMode(savedMode && validModes.includes(savedMode) ? savedMode : resolveDefaultPermissionMode(provider));
   }, [selectedSession?.id, provider]);
 
   useEffect(() => {
