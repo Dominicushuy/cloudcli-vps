@@ -36,6 +36,21 @@ export function createWebSocketServer(
     ) => verifyWebSocketClient(info, dependencies.verifyClient)),
   });
 
+  // VPS patch (cloudcli-vps fork): server-initiated heartbeat ping every 25s to keep
+  // WS alive through Cloudflare Access ~100s idle ceiling. Without this, anh idle
+  // 100s+ → connection silently dropped, next message lags 1-2s reconnecting.
+  // Memo evidence (Mac local trial 2026-05-08): probe held WS open 65s post-turn;
+  // ws.on('ping') zero hits — upstream does not initiate keepalive frames.
+  // 25s = 4 ping cycles per CF Access ceiling (live-poll.mjs slice rationale:
+  // ceiling - safety_margin to tolerate single ping miss + clock skew).
+  const HEARTBEAT_INTERVAL_MS = 25_000;
+  const heartbeat = setInterval(() => {
+    for (const client of wss.clients) {
+      if (client.readyState === client.OPEN) client.ping();
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  wss.on('close', () => clearInterval(heartbeat));
+
   wss.on('connection', (ws, request) => {
     const incomingRequest = request as AuthenticatedWebSocketRequest;
     const url = incomingRequest.url ?? '/';
